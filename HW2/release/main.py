@@ -60,7 +60,7 @@ class LogisticRegression:
         self.weights = np.append(self.weights, self.intercept)
         pred = self.sigmoid(np.dot(inputs, self.weights))
         pred_classes = np.zeros(len(pred))
-        pred_classes[np.where(pred>=0.5)] = 1
+        pred_classes[np.where(pred>0.5)] = 1
         # print("pred: ", pred)
         # print(">=0.5: ", np.where(pred>=0.5))
         # print("pred_classes: ", pred_classes)
@@ -79,6 +79,7 @@ class FLD:
         self.sw = None
         self.sb = None
         self.slope = None
+        self.thres = None
 
     def fit(
         self,
@@ -90,40 +91,62 @@ class FLD:
         print("X0:", X0.shape)
         print("X1:", X1.shape)
         self.m0 = np.mean(X0, axis=0)
+        self.m0 = self.m0
         self.m1 = np.mean(X1, axis=0)
+        self.m1 = self.m1
         print("m0:", self.m0.shape)
-        s0 = np.dot((X0-self.m0).T, (X0-self.m0))
-        s1 = np.dot((X1-self.m1).T, (X1-self.m1))
-
+        print("m1-m0:", (self.m1-self.m0).shape)
+        # s0 = np.dot((X0-self.m0).T, (X0-self.m0))
+        # s1 = np.dot((X1-self.m1).T, (X1-self.m1))
+# －0.6275043821234734088800495144518
+# －0.6275044049684719859494350420153
+        s0 = np.cov(X0, rowvar=False)
+        s1 = np.cov(X1, rowvar=False)
         print("s0:", s0.shape)
         print("s1:", s1.shape)
-        # s0 = np.cov(X0, rowvar=False)
-        # s1 = np.cov(X1, rowvar=False)
         m = np.mean(inputs, axis=0)
         print("m:", m.shape)
-        # self.sb = np.zeros((2, 2))
         self.sw = s0+s1
-        self.sb = len(inputs) * np.dot((self.m0-self.m1), (self.m0-self.m1).T) # 直接平方?
-        invSW_by_SB = np.dot(np.linalg.inv(self.sw), self.sb.T)
+        self.sb = np.dot((self.m1-self.m0).reshape(-1, 1), (self.m1-self.m0).reshape(-1, 1).T) # 直接平方?
+        # self.sb = (self.m1-self.m0).reshape(-1, 1)**2
+        invSW_by_SB = np.linalg.inv(self.sw) @ self.sb
+        print("invSWSB:", invSW_by_SB.shape)
+        # self.w = invSW_by_SB.reshape(-1,1)
+        
         eigenvalues, eigenvectors = np.linalg.eig(invSW_by_SB)
-        print("eigvec:", eigenvectors.shape)
-        self.w = eigenvectors[:, 0]
-        self.slope = eigenvalues
+        print("eigvec:", eigenvectors)
+        print("eigval:", eigenvalues)
+        self.w = eigenvectors[:, 1].reshape(-1, 1)*-1
+        print("w:", self.w.shape)
+        # self.slope = eigenvalues
+
+        y0 = np.dot(X0, self.w)
+        y1 = np.dot(X1, self.w)
+        y0m = np.mean(y0)
+        y1m = np.mean(y1)
+        self.thres = (y0m+y1m)/2
 
     def predict(
         self,
         inputs: npt.NDArray[np.float_],
     ) -> t.Sequence[t.Union[int, bool]]:
         y_p = np.dot(inputs, self.w)
+        m = float(np.mean(y_p))
+        print("y_p:", y_p.shape)
+        print("y_pm:", self.thres)
         y_pred = np.zeros(len(y_p))
-        y_pred[np.where(y_p>=0)] = 1
+        print("y_pred:", y_pred.shape)
+        y_pred = y_pred.reshape((len(y_pred), 1))
+        y_pred[y_p>=self.thres] = 1
+        y_pred = y_pred.flatten()
+
         return y_pred
 
     def plot_projection(self, inputs: npt.NDArray[np.float_]):
         y_pred = self.predict(inputs)
         y0 = np.zeros(len(y_pred))
         y1 = np.zeros(len(y_pred))
-        y0[np.where(y_pred<0)] = 1
+        y0[np.where(y_pred<0)] = 0
 
 def compute_auc(y_trues, y_preds) -> float:
     return metrics.roc_auc_score(y_trues, y_preds)
